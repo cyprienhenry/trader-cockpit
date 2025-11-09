@@ -21,6 +21,7 @@ const DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
   year: "numeric"
 });
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 type EnrichedRow = PalletRow & { stableKey: string };
 type StringFieldKey = {
@@ -134,6 +135,22 @@ const formatWeight = (value: number | null | undefined) => {
   });
 };
 
+function formatKg(value: number) {
+  const hasFraction = !Number.isInteger(value);
+  return `${value.toLocaleString("en-US", {
+    minimumFractionDigits: hasFraction ? 1 : 0,
+    maximumFractionDigits: hasFraction ? 1 : 0
+  })} kg`;
+}
+
+function formatTons(value: number) {
+  const tons = value / 1000;
+  return tons.toLocaleString("en-US", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1
+  });
+}
+
 const escapeCsv = (value: string | number) => {
   const text = `${value ?? ""}`;
   if (text.includes(",") || text.includes('"') || text.includes("\n")) {
@@ -146,6 +163,7 @@ export default function Page() {
   const [filters, setFilters] = useState<FilterCriteria>(INITIAL_FILTERS);
   const [sort, setSort] = useState<{ column: ColumnKey; direction: "asc" | "desc" } | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [viewMode, setViewMode] = useState<"lines" | "summary">("lines");
 
   const filteredRows = useMemo(
     () => applyFilters(SOURCE_DATA, filters, FIXED_NOW),
@@ -183,6 +201,82 @@ export default function Page() {
     filters.zone === "All"
       ? ALL_PORTS
       : Array.from(ZONES[filters.zone]);
+
+  const arrivalsSummary = useMemo(() => {
+    const groupMap = new Map<
+      string,
+      {
+        port_destination: string;
+        daysToArrival: number;
+        totalKg: number;
+        containers: Set<string>;
+        shipments: Set<string>;
+        lines: number;
+      }
+    >();
+    const containersSet = new Set<string>();
+    const shipmentsSet = new Set<string>();
+
+    filteredRows.forEach((row) => {
+      const diffMs = row.etaDate.getTime() - FIXED_NOW.getTime();
+      if (diffMs <= 0) return;
+      const daysToArrival = Math.round(diffMs / ONE_DAY_MS);
+      if (daysToArrival < 1) return;
+
+      const key = `${row.port_destination}__${daysToArrival}`;
+      let group = groupMap.get(key);
+      if (!group) {
+        group = {
+          port_destination: row.port_destination,
+          daysToArrival,
+          totalKg: 0,
+          containers: new Set<string>(),
+          shipments: new Set<string>(),
+          lines: 0
+        };
+        groupMap.set(key, group);
+      }
+
+      group.totalKg += row.line_weight_kg ?? 0;
+      if (row.container_id) {
+        group.containers.add(row.container_id);
+        containersSet.add(row.container_id);
+      }
+      if (row.shipment_id) {
+        group.shipments.add(row.shipment_id);
+        shipmentsSet.add(row.shipment_id);
+      }
+      group.lines += 1;
+    });
+
+    const groups = Array.from(groupMap.values()).map((group) => ({
+      port_destination: group.port_destination,
+      daysToArrival: group.daysToArrival,
+      totalKg: group.totalKg,
+      containers: group.containers.size,
+      shipments: group.shipments.size,
+      lines: group.lines
+    }));
+
+    groups.sort((a, b) => {
+      if (a.daysToArrival !== b.daysToArrival) {
+        return a.daysToArrival - b.daysToArrival;
+      }
+      return a.port_destination.localeCompare(b.port_destination);
+    });
+
+    const totalKg = groups.reduce((sum, group) => sum + group.totalKg, 0);
+
+    return {
+      groups,
+      totals: {
+        groups: groups.length,
+        totalKg,
+        containers: containersSet.size,
+        shipments: shipmentsSet.size
+      }
+    };
+  }, [filteredRows]);
 
   const handleFilterChange = <K extends keyof FilterCriteria>(
     key: K,
@@ -356,137 +450,237 @@ export default function Page() {
 
       <section className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-base font-semibold text-slate-900">Shipments</h2>
-          <button
-            type="button"
-            onClick={handleExportCsv}
-            disabled={!visibleRows.length}
-            className={`inline-flex items-center rounded-lg border px-3 py-2 text-sm font-medium transition ${
-              visibleRows.length
-                ? "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
-                : "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
-            }`}
-          >
-            Export visible rows (CSV)
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="text-base font-semibold text-slate-900">
+              Shipments
+            </h2>
+            <ViewToggle viewMode={viewMode} onChange={setViewMode} />
+          </div>
+          {viewMode === "lines" && (
+            <button
+              type="button"
+              onClick={handleExportCsv}
+              disabled={!visibleRows.length}
+              className={`inline-flex items-center rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                visibleRows.length
+                  ? "border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
+                  : "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
+              }`}
+            >
+              Export visible rows (CSV)
+            </button>
+          )}
         </div>
 
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-          <table className="min-w-full text-left text-sm text-slate-700">
-            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-              <tr>
-                {COLUMNS.map((column) => (
-                  <th key={column.key} className="px-4 py-3 font-semibold">
-                    <button
-                      type="button"
-                      onClick={() => handleSort(column.key)}
-                      className="flex items-center gap-1"
-                    >
-                      <span>{column.label}</span>
-                      <SortIndicator column={column.key} sort={sort} />
-                    </button>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {visibleRows.map((row) => {
-                const status = computeStatus(row, FIXED_NOW);
-                const rowKey = getRowKey(row);
-                const noteValue = notes[rowKey] ?? "";
-                return (
-                  <tr
-                    key={rowKey}
-                    className="border-t border-slate-100 hover:bg-slate-50"
-                  >
-                    <td className="px-4 py-3 font-medium text-slate-900">
-                      {row.booking_reference}
-                    </td>
-                    <td className="px-4 py-3">{row.shipment_id}</td>
-                    <td className="px-4 py-3">{row.container_code}</td>
-                    <td className="px-4 py-3">{row.port_destination}</td>
-                    <td className="px-4 py-3">{row.carrier_name}</td>
-                    <td className="px-4 py-3">{row.vessel_name}</td>
-                    <td className="px-4 py-3">{row.voyage_number}</td>
-                    <td className="px-4 py-3">{dateToText(row.etdDate)}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span>{dateToText(row.etaDate)}</span>
-                        {isEtaWithinSevenDays(row.etaDate, FIXED_NOW) && (
-                          <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-                            ≤7d
-                          </span>
-                        )}
-                        {hasEtaPassed(row.etaDate, FIXED_NOW) && (
-                          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
-                            ETA passed
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 capitalize">{row.product}</td>
-                    <td className="px-4 py-3 uppercase">{row.variety}</td>
-                    <td className="px-4 py-3 uppercase">{row.caliber_raw}</td>
-                    <td className="px-4 py-3 uppercase">
-                      {row.pack_format_raw}
-                    </td>
-                    <td className="px-4 py-3 text-right font-semibold">
-                      {formatInteger(row.box_count)}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      {formatWeight(row.box_weight_kg)}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      {formatWeight(row.line_weight_kg)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="rounded-full border border-slate-200 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-slate-700">
-                        {status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <input
-                        type="text"
-                        value={noteValue}
-                        onChange={(event) =>
-                          handleNotesChange(row, event.target.value)
-                        }
-                        className="w-full rounded-md border border-slate-200 px-2 py-1 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                        placeholder="Add note"
-                      />
-                    </td>
+        {viewMode === "lines" ? (
+          <>
+            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+              <table className="min-w-full text-left text-sm text-slate-700">
+                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    {COLUMNS.map((column) => (
+                      <th key={column.key} className="px-4 py-3 font-semibold">
+                        <button
+                          type="button"
+                          onClick={() => handleSort(column.key)}
+                          className="flex items-center gap-1"
+                        >
+                          <span>{column.label}</span>
+                          <SortIndicator column={column.key} sort={sort} />
+                        </button>
+                      </th>
+                    ))}
                   </tr>
-                );
-              })}
-              {!visibleRows.length && (
-                <tr>
-                  <td
-                    colSpan={COLUMNS.length}
-                    className="px-4 py-6 text-center text-sm text-slate-500"
-                  >
-                    No matching lines
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody>
+                  {visibleRows.map((row) => {
+                    const status = computeStatus(row, FIXED_NOW);
+                    const rowKey = getRowKey(row);
+                    const noteValue = notes[rowKey] ?? "";
+                    return (
+                      <tr
+                        key={rowKey}
+                        className="border-t border-slate-100 hover:bg-slate-50"
+                      >
+                        <td className="px-4 py-3 font-medium text-slate-900">
+                          {row.booking_reference}
+                        </td>
+                        <td className="px-4 py-3">{row.shipment_id}</td>
+                        <td className="px-4 py-3">{row.container_code}</td>
+                        <td className="px-4 py-3">{row.port_destination}</td>
+                        <td className="px-4 py-3">{row.carrier_name}</td>
+                        <td className="px-4 py-3">{row.vessel_name}</td>
+                        <td className="px-4 py-3">{row.voyage_number}</td>
+                        <td className="px-4 py-3">{dateToText(row.etdDate)}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span>{dateToText(row.etaDate)}</span>
+                            {isEtaWithinSevenDays(row.etaDate, FIXED_NOW) && (
+                              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                                ≤7d
+                              </span>
+                            )}
+                            {hasEtaPassed(row.etaDate, FIXED_NOW) && (
+                              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                                ETA passed
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 capitalize">{row.product}</td>
+                        <td className="px-4 py-3 uppercase">{row.variety}</td>
+                        <td className="px-4 py-3 uppercase">
+                          {row.caliber_raw}
+                        </td>
+                        <td className="px-4 py-3 uppercase">
+                          {row.pack_format_raw}
+                        </td>
+                        <td className="px-4 py-3 text-right font-semibold">
+                          {formatInteger(row.box_count)}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {formatWeight(row.box_weight_kg)}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {formatWeight(row.line_weight_kg)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="rounded-full border border-slate-200 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-slate-700">
+                            {status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <input
+                            type="text"
+                            value={noteValue}
+                            onChange={(event) =>
+                              handleNotesChange(row, event.target.value)
+                            }
+                            className="w-full rounded-md border border-slate-200 px-2 py-1 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                            placeholder="Add note"
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {!visibleRows.length && (
+                    <tr>
+                      <td
+                        colSpan={COLUMNS.length}
+                        className="px-4 py-6 text-center text-sm text-slate-500"
+                      >
+                        No matching lines
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
 
-        <p className="text-sm text-slate-600">
-          Visible:{" "}
-          <span className="font-semibold text-slate-900">
-            {visibleCounts.rows.toLocaleString("en-US")}
-          </span>{" "}
-          lines ·{" "}
-          <span className="font-semibold text-slate-900">
-            {visibleCounts.containers.toLocaleString("en-US")}
-          </span>{" "}
-          containers ·{" "}
-          <span className="font-semibold text-slate-900">
-            {visibleCounts.shipments.toLocaleString("en-US")}
-          </span>{" "}
-          shipments
-        </p>
+            <p className="text-sm text-slate-600">
+              Visible:{" "}
+              <span className="font-semibold text-slate-900">
+                {visibleCounts.rows.toLocaleString("en-US")}
+              </span>{" "}
+              lines ·{" "}
+              <span className="font-semibold text-slate-900">
+                {visibleCounts.containers.toLocaleString("en-US")}
+              </span>{" "}
+              containers ·{" "}
+              <span className="font-semibold text-slate-900">
+                {visibleCounts.shipments.toLocaleString("en-US")}
+              </span>{" "}
+              shipments
+            </p>
+          </>
+        ) : (
+          <>
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="mb-4 text-sm text-slate-600">
+                Groups:{" "}
+                <span className="font-semibold text-slate-900">
+                  {arrivalsSummary.totals.groups.toLocaleString("en-US")}
+                </span>{" "}
+                · Total kg:{" "}
+                <span className="font-semibold text-slate-900">
+                  {formatKg(arrivalsSummary.totals.totalKg)}
+                </span>{" "}
+                · Containers:{" "}
+                <span className="font-semibold text-slate-900">
+                  {arrivalsSummary.totals.containers.toLocaleString("en-US")}
+                </span>{" "}
+                · Shipments:{" "}
+                <span className="font-semibold text-slate-900">
+                  {arrivalsSummary.totals.shipments.toLocaleString("en-US")}
+                </span>
+              </p>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-sm text-slate-700">
+                  <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold">Port</th>
+                      <th className="px-4 py-3 font-semibold">
+                        Days to arrival
+                      </th>
+                      <th className="px-4 py-3 font-semibold">Total weight</th>
+                      <th className="px-4 py-3 font-semibold text-right">
+                        Containers
+                      </th>
+                      <th className="px-4 py-3 font-semibold text-right">
+                        Shipments
+                      </th>
+                      <th className="px-4 py-3 font-semibold text-right">
+                        Lines
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {arrivalsSummary.groups.map((group) => (
+                      <tr
+                        key={`${group.port_destination}-${group.daysToArrival}`}
+                        className="border-t border-slate-100"
+                      >
+                        <td className="px-4 py-3 font-medium text-slate-900">
+                          {group.port_destination}
+                        </td>
+                        <td className="px-4 py-3">{group.daysToArrival}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-col">
+                            <span className="font-semibold">
+                              {formatKg(group.totalKg)}
+                            </span>
+                            <span className="text-xs text-slate-500">
+                              ({formatTons(group.totalKg)} t)
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {group.containers.toLocaleString("en-US")}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {group.shipments.toLocaleString("en-US")}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {group.lines.toLocaleString("en-US")}
+                        </td>
+                      </tr>
+                    ))}
+                    {!arrivalsSummary.groups.length && (
+                      <tr>
+                        <td
+                          colSpan={6}
+                          className="px-4 py-6 text-center text-sm text-slate-500"
+                        >
+                          No upcoming arrivals for the current filters.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
       </section>
     </main>
   );
@@ -607,3 +801,37 @@ const getComparableValue = (
     }
   }
 };
+
+function ViewToggle({
+  viewMode,
+  onChange
+}: {
+  viewMode: "lines" | "summary";
+  onChange: (mode: "lines" | "summary") => void;
+}) {
+  const options: Array<{ id: "lines" | "summary"; label: string }> = [
+    { id: "lines", label: "Lines view" },
+    { id: "summary", label: "Arrivals summary" }
+  ];
+  return (
+    <div className="inline-flex rounded-full border border-slate-200 bg-white p-1 text-sm">
+      {options.map((option) => {
+        const active = option.id === viewMode;
+        return (
+          <button
+            key={option.id}
+            type="button"
+            onClick={() => onChange(option.id)}
+            className={`rounded-full px-3 py-1 transition ${
+              active
+                ? "bg-emerald-600 text-white"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
