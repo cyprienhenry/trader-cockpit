@@ -1,26 +1,19 @@
 "use client";
 
+import Image from "next/image";
 import { useMemo, useState } from "react";
 import palletData from "@/data/data.json";
 import {
   FilterCriteria,
   FIXED_NOW_ISO,
-  ZONES,
-  ZoneKey,
   applyFilters,
   computeStatus,
   hasEtaPassed,
-  isEtaWithinSevenDays,
-  zoneOptions
+  isEtaWithinSevenDays
 } from "@/lib/filters";
 import type { PalletDataset, PalletItem, PalletRow } from "@/types";
 
 const FIXED_NOW = new Date(FIXED_NOW_ISO);
-const DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "numeric",
-  year: "numeric"
-});
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 type EnrichedRow = PalletRow & { stableKey: string };
@@ -58,27 +51,17 @@ const VARIETIES = uniqueValues("variety");
 const CALIBERS = uniqueValues("caliber_raw");
 
 const INITIAL_FILTERS: FilterCriteria = {
-  zone: "All",
   port: "",
   variety: "",
   caliber: "",
   etaFrom: "",
   etaTo: "",
-  search: "",
   nextArrivalsOnly: false
 };
 
 type ColumnKey =
-  | "booking_reference"
-  | "shipment_id"
-  | "container_code"
   | "port_destination"
-  | "carrier_name"
-  | "vessel_name"
-  | "voyage_number"
-  | "etd"
-  | "eta"
-  | "product"
+  | "days_to_arrival"
   | "variety"
   | "caliber_raw"
   | "pack_format_raw"
@@ -86,6 +69,7 @@ type ColumnKey =
   | "box_weight_kg"
   | "line_weight_kg"
   | "status"
+  | "pallet_pl_id"
   | "notes";
 
 interface ColumnDefinition {
@@ -95,16 +79,8 @@ interface ColumnDefinition {
 }
 
 const COLUMNS: ColumnDefinition[] = [
-  { key: "booking_reference", label: "Booking reference" },
-  { key: "shipment_id", label: "Shipment ID" },
-  { key: "container_code", label: "Container code" },
   { key: "port_destination", label: "Port" },
-  { key: "carrier_name", label: "Carrier" },
-  { key: "vessel_name", label: "Vessel" },
-  { key: "voyage_number", label: "Voyage" },
-  { key: "etd", label: "ETD" },
-  { key: "eta", label: "ETA" },
-  { key: "product", label: "Product" },
+  { key: "days_to_arrival", label: "Days to arrival" },
   { key: "variety", label: "Variety" },
   { key: "caliber_raw", label: "Caliber" },
   { key: "pack_format_raw", label: "Pack format" },
@@ -112,13 +88,9 @@ const COLUMNS: ColumnDefinition[] = [
   { key: "box_weight_kg", label: "Box weight (kg)", numeric: true },
   { key: "line_weight_kg", label: "Line weight (kg)", numeric: true },
   { key: "status", label: "Status" },
+  { key: "pallet_pl_id", label: "Pallet PL ID" },
   { key: "notes", label: "Notes" }
 ];
-
-const dateToText = (date: Date) => {
-  if (Number.isNaN(date.getTime())) return "—";
-  return DATE_FORMATTER.format(date);
-};
 
 const getRowKey = (row: EnrichedRow) => row.stableKey;
 
@@ -133,6 +105,16 @@ const formatWeight = (value: number | null | undefined) => {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1
   });
+};
+
+const getDaysToArrival = (row: EnrichedRow) =>
+  Math.round((row.etaDate.getTime() - FIXED_NOW.getTime()) / ONE_DAY_MS);
+
+const getRowTooltip = (row: EnrichedRow) => {
+  const booking = row.booking_reference || "—";
+  const container = row.container_code || "—";
+  const voyage = row.voyage_number || "—";
+  return `Booking: ${booking}\nContainer: ${container}\nVoyage: ${voyage}`;
 };
 
 function formatKg(value: number) {
@@ -197,10 +179,7 @@ export default function Page() {
     };
   }, [visibleRows]);
 
-  const portOptions: string[] =
-    filters.zone === "All"
-      ? ALL_PORTS
-      : Array.from(ZONES[filters.zone]);
+  const portOptions = ALL_PORTS;
 
   const arrivalsSummary = useMemo(() => {
     const groupMap = new Map<
@@ -288,21 +267,6 @@ export default function Page() {
     }));
   };
 
-  const handleZoneChange = (rawValue: string) => {
-    const value: ZoneKey = (rawValue || "All") as ZoneKey;
-    setFilters((prev) => {
-      const allowedPorts =
-        value === "All"
-          ? null
-          : (ZONES[value] as readonly string[]).map((port) => port as string);
-      const nextPort =
-        allowedPorts && prev.port && !allowedPorts.includes(prev.port)
-          ? ""
-          : prev.port;
-      return { ...prev, zone: value, port: nextPort };
-    });
-  };
-
   const handleSort = (column: ColumnKey) => {
     setSort((current) => {
       if (current?.column === column) {
@@ -332,16 +296,8 @@ export default function Page() {
       const noteValue = notes[rowKey] ?? "";
 
       return [
-        row.booking_reference,
-        row.shipment_id,
-        row.container_code,
         row.port_destination,
-        row.carrier_name,
-        row.vessel_name,
-        row.voyage_number,
-        row.etd,
-        row.eta,
-        row.product,
+        getDaysToArrival(row),
         row.variety,
         row.caliber_raw,
         row.pack_format_raw,
@@ -349,6 +305,7 @@ export default function Page() {
         row.box_weight_kg,
         row.line_weight_kg,
         status,
+        row.pallet_pl_id ?? "",
         noteValue
       ].map(escapeCsv);
     });
@@ -369,45 +326,62 @@ export default function Page() {
 
   return (
     <main className="mx-auto max-w-7xl space-y-8 px-6 py-10">
-      <section className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-slate-600">
-          Dataset loaded: <span className="font-semibold text-slate-900">{SOURCE_DATA.length}</span>{" "}
-          lines · {nowLabel}
-        </p>
-        <button
-          type="button"
-          onClick={() =>
-            handleFilterChange("nextArrivalsOnly", !filters.nextArrivalsOnly)
-          }
-          className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-sm font-medium transition ${
-            filters.nextArrivalsOnly
-              ? "bg-emerald-600 text-white"
-              : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-          }`}
-        >
-          Next arrivals ≤7d
-        </button>
+      <section className="flex flex-col gap-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-4">
+          <div className="relative h-16 w-16 overflow-hidden rounded-xl border border-slate-100 bg-slate-50 p-2">
+            <Image
+              src="/logo.png"
+              alt="Beta logo"
+              fill
+              className="object-contain p-2"
+              sizes="64px"
+              priority
+            />
+          </div>
+          <div>
+            <p className="text-sm uppercase tracking-wide text-emerald-600">
+              Demo
+            </p>
+            <h1 className="text-2xl font-semibold text-slate-900">
+              Beta Trader&apos;s Cockpit
+            </h1>
+            <p className="text-sm text-slate-500">
+              Explore shipments and upcoming arrivals from a single view.
+            </p>
+          </div>
+        </div>
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-base font-semibold text-slate-900">Filters</h2>
-          <button
-            type="button"
-            onClick={clearAllFilters}
-            className="text-sm font-medium text-emerald-600 hover:text-emerald-700"
-          >
-            Clear all
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() =>
+                handleFilterChange(
+                  "nextArrivalsOnly",
+                  !filters.nextArrivalsOnly
+                )
+              }
+              className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-sm font-medium transition ${
+                filters.nextArrivalsOnly
+                  ? "bg-emerald-600 text-white"
+                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+              }`}
+            >
+              Next arrivals ≤7d
+            </button>
+            <button
+              type="button"
+              onClick={clearAllFilters}
+              className="text-sm font-medium text-emerald-600 hover:text-emerald-700"
+            >
+              Clear all
+            </button>
+          </div>
         </div>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <SelectControl
-            label="Zone"
-            value={filters.zone}
-            onChange={handleZoneChange}
-            options={zoneOptions}
-            placeholder="All zones"
-          />
           <SelectControl
             label="Port"
             value={filters.port}
@@ -438,12 +412,6 @@ export default function Page() {
             label="ETA to"
             value={filters.etaTo}
             onChange={(value) => handleFilterChange("etaTo", value)}
-          />
-          <SearchControl
-            label="Full-text search"
-            value={filters.search}
-            onChange={(value) => handleFilterChange("search", value)}
-            placeholder="Booking, shipment, container, vessel, voyage"
           />
         </div>
       </section>
@@ -497,24 +465,20 @@ export default function Page() {
                     const status = computeStatus(row, FIXED_NOW);
                     const rowKey = getRowKey(row);
                     const noteValue = notes[rowKey] ?? "";
+                    const daysToArrival = getDaysToArrival(row);
                     return (
                       <tr
                         key={rowKey}
+                        title={getRowTooltip(row)}
+                        aria-label={getRowTooltip(row)}
                         className="border-t border-slate-100 hover:bg-slate-50"
                       >
-                        <td className="px-4 py-3 font-medium text-slate-900">
-                          {row.booking_reference}
-                        </td>
-                        <td className="px-4 py-3">{row.shipment_id}</td>
-                        <td className="px-4 py-3">{row.container_code}</td>
                         <td className="px-4 py-3">{row.port_destination}</td>
-                        <td className="px-4 py-3">{row.carrier_name}</td>
-                        <td className="px-4 py-3">{row.vessel_name}</td>
-                        <td className="px-4 py-3">{row.voyage_number}</td>
-                        <td className="px-4 py-3">{dateToText(row.etdDate)}</td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span>{dateToText(row.etaDate)}</span>
+                            <span className="font-semibold">
+                              {formatInteger(daysToArrival)}
+                            </span>
                             {isEtaWithinSevenDays(row.etaDate, FIXED_NOW) && (
                               <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
                                 ≤7d
@@ -527,7 +491,6 @@ export default function Page() {
                             )}
                           </div>
                         </td>
-                        <td className="px-4 py-3 capitalize">{row.product}</td>
                         <td className="px-4 py-3 uppercase">{row.variety}</td>
                         <td className="px-4 py-3 uppercase">
                           {row.caliber_raw}
@@ -549,14 +512,17 @@ export default function Page() {
                             {status}
                           </span>
                         </td>
+                        <td className="px-4 py-3 text-sm text-slate-600">
+                          {row.pallet_pl_id || "—"}
+                        </td>
                         <td className="px-4 py-3">
-                          <input
-                            type="text"
+                          <textarea
+                            rows={2}
                             value={noteValue}
                             onChange={(event) =>
                               handleNotesChange(row, event.target.value)
                             }
-                            className="w-full rounded-md border border-slate-200 px-2 py-1 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                            className="w-full rounded-md border border-slate-200 px-2 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-200"
                             placeholder="Add note"
                           />
                         </td>
@@ -682,6 +648,13 @@ export default function Page() {
           </>
         )}
       </section>
+      <footer className="text-sm text-slate-500">
+        Dataset loaded:{" "}
+        <span className="font-semibold text-slate-900">
+          {SOURCE_DATA.length}
+        </span>{" "}
+        lines · {nowLabel}
+      </footer>
     </main>
   );
 }
@@ -753,39 +726,16 @@ const DateControl = ({
   </label>
 );
 
-const SearchControl = ({
-  label,
-  value,
-  onChange,
-  placeholder
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder: string;
-}) => (
-  <label className="text-sm text-slate-600 md:col-span-2 lg:col-span-3">
-    <span className="mb-1 block font-medium text-slate-700">{label}</span>
-    <input
-      type="search"
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      placeholder={placeholder}
-      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-    />
-  </label>
-);
-
 const getComparableValue = (
   row: EnrichedRow,
   notes: Record<string, string>,
   column: ColumnKey
 ) => {
   switch (column) {
-    case "etd":
-      return row.etdDate.getTime();
-    case "eta":
-      return row.etaDate.getTime();
+    case "days_to_arrival":
+      return getDaysToArrival(row);
+    case "pallet_pl_id":
+      return (row.pallet_pl_id ?? "").toLowerCase();
     case "box_count":
     case "box_weight_kg":
     case "line_weight_kg":
