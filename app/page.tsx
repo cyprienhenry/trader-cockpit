@@ -9,18 +9,17 @@ import {
   applyFilters,
   computeStatus,
   hasEtaPassed,
-  isEtaWithinSevenDays
+  isEtaWithinSevenDays,
 } from "@/lib/filters";
 import type { PalletDataset, PalletItem, PalletRow } from "@/types";
 
-const FIXED_NOW = new Date(FIXED_NOW_ISO);
+// const FIXED_NOW = new Date(FIXED_NOW_ISO);
+const FIXED_NOW = new Date("2025-11-12T00:00:00Z");
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 type EnrichedRow = PalletRow & { stableKey: string };
 type StringFieldKey = {
-  [K in keyof PalletItem]: PalletItem[K] extends string | undefined
-    ? K
-    : never;
+  [K in keyof PalletItem]: PalletItem[K] extends string | undefined ? K : never;
 }[keyof PalletItem];
 
 const PALLET_ITEMS: PalletItem[] = ((palletData as PalletDataset).palletitems ||
@@ -32,17 +31,16 @@ const SOURCE_DATA: EnrichedRow[] = PALLET_ITEMS.map((item, index) => ({
   etdDate: new Date(item.etd),
   stableKey: `${item.shipment_id}-${item.container_id ?? item.container_code}-${
     item.line_id ?? index
-  }`
+  }`,
 }));
 
 const uniqueValues = <K extends StringFieldKey>(key: K) => {
   const values = PALLET_ITEMS.map(
     (item) => item[key as keyof PalletItem]
-  )
-    .filter(
-      (value): value is string =>
-        typeof value === "string" && value.trim().length > 0
-    );
+  ).filter(
+    (value): value is string =>
+      typeof value === "string" && value.trim().length > 0
+  );
   return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
 };
 
@@ -52,7 +50,7 @@ const CALIBERS = uniqueValues("caliber_raw");
 const SOLD_FILTER_OPTIONS: Array<{ value: SoldFilter; label: string }> = [
   { value: "all", label: "All" },
   { value: "sold", label: "Only sold" },
-  { value: "unsold", label: "Only unsold" }
+  { value: "unsold", label: "Only unsold" },
 ];
 
 type SoldFilter = "all" | "sold" | "unsold";
@@ -65,7 +63,7 @@ const INITIAL_FILTERS: UiFilters = {
   etaFrom: "",
   etaTo: "",
   nextArrivalsOnly: false,
-  soldFilter: "all"
+  soldFilter: "all",
 };
 
 type ColumnKey =
@@ -98,7 +96,7 @@ const COLUMNS: ColumnDefinition[] = [
   { key: "line_weight_kg", label: "Line weight (kg)", numeric: true },
   { key: "status", label: "Status" },
   { key: "sold", label: "Sold" },
-  { key: "pallet_pl_id", label: "Pallet PL ID" }
+  { key: "pallet_pl_id", label: "Pallet PL ID" },
 ];
 
 const getRowKey = (row: EnrichedRow) => row.stableKey;
@@ -112,7 +110,7 @@ const formatWeight = (value: number | null | undefined) => {
   if (value === null || value === undefined) return "—";
   return value.toLocaleString("en-US", {
     minimumFractionDigits: 1,
-    maximumFractionDigits: 1
+    maximumFractionDigits: 1,
   });
 };
 
@@ -137,7 +135,7 @@ function formatKg(value: number) {
   const hasFraction = !Number.isInteger(value);
   return `${value.toLocaleString("en-US", {
     minimumFractionDigits: hasFraction ? 1 : 0,
-    maximumFractionDigits: hasFraction ? 1 : 0
+    maximumFractionDigits: hasFraction ? 1 : 0,
   })} kg`;
 }
 
@@ -145,9 +143,11 @@ function formatTons(value: number) {
   const tons = value / 1000;
   return tons.toLocaleString("en-US", {
     minimumFractionDigits: 1,
-    maximumFractionDigits: 1
+    maximumFractionDigits: 1,
   });
 }
+
+const formatPercent = (value: number) => `${value.toFixed(1)} %`;
 
 const escapeCsv = (value: string | number) => {
   const text = `${value ?? ""}`;
@@ -159,7 +159,10 @@ const escapeCsv = (value: string | number) => {
 
 export default function Page() {
   const [filters, setFilters] = useState<UiFilters>(INITIAL_FILTERS);
-  const [sort, setSort] = useState<{ column: ColumnKey; direction: "asc" | "desc" } | null>(null);
+  const [sort, setSort] = useState<{
+    column: ColumnKey;
+    direction: "asc" | "desc";
+  } | null>(null);
   const [sold, setSold] = useState<Record<string, boolean>>({});
   const [viewMode, setViewMode] = useState<"lines" | "summary">("lines");
 
@@ -206,11 +209,48 @@ export default function Page() {
     return {
       rows: visibleRows.length,
       containers: containers.size,
-      shipments: shipments.size
+      shipments: shipments.size,
     };
   }, [visibleRows]);
 
   const portOptions = ALL_PORTS;
+
+  const kpis = useMemo(() => {
+    const horizon = new Date(FIXED_NOW);
+    horizon.setUTCDate(horizon.getUTCDate() + 7);
+    let totalKg = 0;
+    let soldKg = 0;
+    let unsoldKg7d = 0;
+
+    visibleRows.forEach((row) => {
+      const weight = row.line_weight_kg ?? 0;
+      totalKg += weight;
+      const rowSold = isRowSold(row);
+      if (rowSold) soldKg += weight;
+      const etaTime = row.etaDate.getTime();
+      if (Number.isNaN(etaTime)) {
+        return;
+      }
+      if (
+        !rowSold &&
+        etaTime > FIXED_NOW.getTime() &&
+        etaTime <= horizon.getTime()
+      ) {
+        unsoldKg7d += weight;
+      }
+    });
+
+    const pctSold = totalKg > 0 ? (soldKg / totalKg) * 100 : 0;
+    const pctUnsold7d = totalKg > 0 ? (unsoldKg7d / totalKg) * 100 : 0;
+
+    return {
+      totalKg,
+      soldKg,
+      unsoldKg7d,
+      pctSold,
+      pctUnsold7d,
+    };
+  }, [visibleRows, isRowSold]);
 
   const arrivalsSummary = useMemo(() => {
     const groupMap = new Map<
@@ -242,7 +282,7 @@ export default function Page() {
           totalKg: 0,
           containers: new Set<string>(),
           shipments: new Set<string>(),
-          lines: 0
+          lines: 0,
         };
         groupMap.set(key, group);
       }
@@ -265,7 +305,7 @@ export default function Page() {
       totalKg: group.totalKg,
       containers: group.containers.size,
       shipments: group.shipments.size,
-      lines: group.lines
+      lines: group.lines,
     }));
 
     groups.sort((a, b) => {
@@ -283,8 +323,8 @@ export default function Page() {
         groups: groups.length,
         totalKg,
         containers: containersSet.size,
-        shipments: shipmentsSet.size
-      }
+        shipments: shipmentsSet.size,
+      },
     };
   }, [filteredRows]);
 
@@ -294,7 +334,7 @@ export default function Page() {
   ) => {
     setFilters((prev) => ({
       ...prev,
-      [key]: value
+      [key]: value,
     }));
   };
 
@@ -336,11 +376,14 @@ export default function Page() {
         row.line_weight_kg,
         status,
         rowSold ? "true" : "false",
-        row.pallet_pl_id ?? ""
+        row.pallet_pl_id ?? "",
       ].map(escapeCsv);
     });
 
-    const csvContent = [header.map(escapeCsv).join(","), ...rows.map((row) => row.join(","))].join("\n");
+    const csvContent = [
+      header.map(escapeCsv).join(","),
+      ...rows.map((row) => row.join(",")),
+    ].join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -455,6 +498,7 @@ export default function Page() {
       </section>
 
       <section className="space-y-4">
+        <KPIBar totals={kpis} />
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-3">
             <h2 className="text-base font-semibold text-slate-900">
@@ -698,7 +742,7 @@ export default function Page() {
 
 const SortIndicator = ({
   column,
-  sort
+  sort,
 }: {
   column: ColumnKey;
   sort: { column: ColumnKey; direction: "asc" | "desc" } | null;
@@ -718,7 +762,7 @@ const SelectControl = ({
   value,
   onChange,
   options,
-  placeholder
+  placeholder,
 }: {
   label: string;
   value: string;
@@ -749,7 +793,7 @@ const SelectControl = ({
 const DateControl = ({
   label,
   value,
-  onChange
+  onChange,
 }: {
   label: string;
   value: string;
@@ -769,7 +813,7 @@ const DateControl = ({
 const SoldToggle = ({
   checked,
   onChange,
-  label
+  label,
 }: {
   checked: boolean;
   onChange: () => void;
@@ -792,6 +836,53 @@ const SoldToggle = ({
     />
   </button>
 );
+
+const KPIBar = ({
+  totals,
+}: {
+  totals: {
+    totalKg: number;
+    pctSold: number;
+    pctUnsold7d: number;
+  };
+}) => {
+  const cards = [
+    {
+      label: "Total in transit",
+      value: formatKg(totals.totalKg),
+      sub: `(${formatTons(totals.totalKg)} t)`,
+    },
+    {
+      label: "% sold",
+      value: formatPercent(totals.pctSold),
+      sub: "Share of visible weight",
+    },
+    {
+      label: "% unsold ≤7d",
+      value: formatPercent(totals.pctUnsold7d),
+      sub: "Unsold arriving within 7 days",
+      title: "Unsold share landing within 7 days",
+    },
+  ];
+
+  return (
+    <div className="grid gap-4 sm:grid-cols-3">
+      {cards.map((card) => (
+        <div
+          key={card.label}
+          className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+          title={card.title}
+        >
+          <p className="text-xs uppercase tracking-wide text-slate-500">
+            {card.label}
+          </p>
+          <p className="text-2xl font-semibold text-slate-900">{card.value}</p>
+          <p className="text-sm text-slate-500">{card.sub}</p>
+        </div>
+      ))}
+    </div>
+  );
+};
 
 const getComparableValue = (
   row: EnrichedRow,
@@ -821,14 +912,14 @@ const getComparableValue = (
 
 function ViewToggle({
   viewMode,
-  onChange
+  onChange,
 }: {
   viewMode: "lines" | "summary";
   onChange: (mode: "lines" | "summary") => void;
 }) {
   const options: Array<{ id: "lines" | "summary"; label: string }> = [
     { id: "lines", label: "Lines view" },
-    { id: "summary", label: "Arrivals summary" }
+    { id: "summary", label: "Arrivals summary" },
   ];
   return (
     <div className="inline-flex rounded-full border border-slate-200 bg-white p-1 text-sm">
