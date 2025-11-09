@@ -1,0 +1,114 @@
+{
+  "shipments": [
+    {
+      "booking_reference": "EBKG1452500",
+      "carrier_name": "MSC",
+      "etd": "2025-10-20T00:00:00Z",
+      "eta": "2025-11-17T00:00:00Z",
+      "port_destination": "London Gateway Port",
+      "port_origin": "Callao",
+      "shipment_id": "SHIP12345",
+      "vessel_name": "MSC EMDEN III",
+      "voyage_number": "XA543A"
+    },
+    {
+      "booking_reference": "EBKG14248062",
+      "carrier_name": "MSC",
+      "etd": "2025-10-25T00:00:00Z",
+      "eta": "2025-11-22T00:00:00Z",
+      "port_destination": "London Gateway Port",
+      "port_origin": "Callao",
+      "shipment_id": "SHIP12346",
+      "vessel_name": "MSC PALAK",
+      "voyage_number": "NX538R"
+    },
+    {
+      "booking_reference": "EBKG1452601",
+      "carrier_name": "Maersk",
+      "etd": "2025-11-01T00:00:00Z",
+      "eta": "2025-11-26T00:00:00Z",
+      "port_destination": "Rotterdam",
+      "port_origin": "Callao",
+      "shipment_id": "SHIP12347",
+      "vessel_name": "MAERSK LIMA",
+      "voyage_number": "MZ2101"
+    },
+    {
+      "booking_reference": "EBKG1452702",
+      "carrier_name": "COSCO",
+      "etd": "2025-10-30T00:00:00Z",
+      "eta": "2025-11-29T00:00:00Z",
+      "port_destination": "Algeciras",
+      "port_origin": "Callao",
+      "shipment_id": "SHIP12348",
+      "vessel_name": "COSCO AMAZON",
+      "voyage_number": "CA998"
+    },
+    {
+      "booking_reference": "EBKG1452803",
+      "carrier_name": "Hapag-Lloyd",
+      "etd": "2025-11-05T00:00:00Z",
+      "eta": "2025-12-04T00:00:00Z",
+      "port_destination": "Valencia",
+      "port_origin": "Callao",
+      "shipment_id": "SHIP12349",
+      "vessel_name": "HMM VALPARAISO",
+      "voyage_number": "HV445"
+    },
+    {
+      "booking_reference": "EBKG1452904",
+      "carrier_name": "MSC",
+      "etd": "2025-11-12T00:00:00Z",
+      "eta": "2025-12-07T00:00:00Z",
+      "port_destination": "Rotterdam",
+      "port_origin": "Callao",
+      "shipment_id": "SHIP12350",
+      "vessel_name": "MSC BAHIA",
+      "voyage_number": "XB120"
+    },
+    {
+      "booking_reference": "EBKG1453005",
+      "carrier_name": "Maersk",
+      "etd": "2025-10-10T00:00:00Z",
+      "eta": "2025-11-07T00:00:00Z",
+      "port_destination": "Felixstowe",
+      "port_origin": "Callao",
+      "shipment_id": "SHIP12351",
+      "vessel_name": "MAERSK CUSCO",
+      "voyage_number": "MC333"
+    },
+    {
+      "booking_reference": "EBKG1453106",
+      "carrier_name": "ONE",
+      "etd": "2025-11-03T00:00:00Z",
+      "eta": "2025-11-28T00:00:00Z",
+      "port_destination": "Antwerp",
+      "port_origin": "Callao",
+      "shipment_id": "SHIP12352",
+      "vessel_name": "ONE PERU",
+      "voyage_number": "OP77"
+    },
+    {
+      "booking_reference": "EBKG1453207",
+      "carrier_name": "MSC",
+      "etd": "2025-11-18T00:00:00Z",
+      "eta": "2025-12-13T00:00:00Z",
+      "port_destination": "Rotterdam",
+      "port_origin": "Callao",
+      "shipment_id": "SHIP12353",
+      "vessel_name": "MSC AMAZON",
+      "voyage_number": "XA999"
+    },
+    {
+      "booking_reference": "EBKG1453308",
+      "carrier_name": "CMA CGM",
+      "etd": "2025-09-30T00:00:00Z",
+      "eta": "2025-10-30T00:00:00Z",
+      "port_destination": "Algeciras",
+      "port_origin": "Callao",
+      "shipment_id": "SHIP12354",
+      "vessel_name": "CMA CGM PISCO",
+      "voyage_number": "CG777"
+    }
+  ]
+}

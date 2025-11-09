@@ -1,0 +1,64 @@
+{
+  "containers": [
+    {
+      "container_id": "BETA | SHIP12345 | MEDU966982",
+      "shipment_id": "SHIP12345",
+      "gross_weight_kg": 14310,
+      "container_code": "MEDU966982"
+    },
+    {
+      "container_id": "BETA | SHIP12346 | MSDU979950",
+      "shipment_id": "SHIP12346",
+      "gross_weight_kg": 13560,
+      "container_code": "MSDU979950"
+    },
+    {
+      "container_id": "BETA | SHIP12347 | MSKU731245",
+      "shipment_id": "SHIP12347",
+      "gross_weight_kg": 14980,
+      "container_code": "MSKU731245"
+    },
+    {
+      "container_id": "BETA | SHIP12348 | COSU518904",
+      "shipment_id": "SHIP12348",
+      "gross_weight_kg": 14230,
+      "container_code": "COSU518904"
+    },
+    {
+      "container_id": "BETA | SHIP12349 | HLCU604371",
+      "shipment_id": "SHIP12349",
+      "gross_weight_kg": 15120,
+      "container_code": "HLCU604371"
+    },
+    {
+      "container_id": "BETA | SHIP12350 | MEDU402119",
+      "shipment_id": "SHIP12350",
+      "gross_weight_kg": 14650,
+      "container_code": "MEDU402119"
+    },
+    {
+      "container_id": "BETA | SHIP12351 | MSKU895432",
+      "shipment_id": "SHIP12351",
+      "gross_weight_kg": 13890,
+      "container_code": "MSKU895432"
+    },
+    {
+      "container_id": "BETA | SHIP12352 | ONEU217603",
+      "shipment_id": "SHIP12352",
+      "gross_weight_kg": 15440,
+      "container_code": "ONEU217603"
+    },
+    {
+      "container_id": "BETA | SHIP12353 | MEDU773015",
+      "shipment_id": "SHIP12353",
+      "gross_weight_kg": 14780,
+      "container_code": "MEDU773015"
+    },
+    {
+      "container_id": "BETA | SHIP12354 | CMAU960287",
+      "shipment_id": "SHIP12354",
+      "gross_weight_kg": 13970,
+      "container_code": "CMAU960287"
+    }
+  ]
+}
