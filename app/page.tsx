@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import palletData from "@/data/data.json";
 import {
   FilterCriteria,
@@ -49,14 +49,23 @@ const uniqueValues = <K extends StringFieldKey>(key: K) => {
 const ALL_PORTS = uniqueValues("port_destination");
 const VARIETIES = uniqueValues("variety");
 const CALIBERS = uniqueValues("caliber_raw");
+const SOLD_FILTER_OPTIONS: Array<{ value: SoldFilter; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "sold", label: "Only sold" },
+  { value: "unsold", label: "Only unsold" }
+];
 
-const INITIAL_FILTERS: FilterCriteria = {
+type SoldFilter = "all" | "sold" | "unsold";
+type UiFilters = FilterCriteria & { soldFilter: SoldFilter };
+
+const INITIAL_FILTERS: UiFilters = {
   port: "",
   variety: "",
   caliber: "",
   etaFrom: "",
   etaTo: "",
-  nextArrivalsOnly: false
+  nextArrivalsOnly: false,
+  soldFilter: "all"
 };
 
 type ColumnKey =
@@ -69,8 +78,8 @@ type ColumnKey =
   | "box_weight_kg"
   | "line_weight_kg"
   | "status"
-  | "pallet_pl_id"
-  | "notes";
+  | "sold"
+  | "pallet_pl_id";
 
 interface ColumnDefinition {
   key: ColumnKey;
@@ -88,8 +97,8 @@ const COLUMNS: ColumnDefinition[] = [
   { key: "box_weight_kg", label: "Box weight (kg)", numeric: true },
   { key: "line_weight_kg", label: "Line weight (kg)", numeric: true },
   { key: "status", label: "Status" },
-  { key: "pallet_pl_id", label: "Pallet PL ID" },
-  { key: "notes", label: "Notes" }
+  { key: "sold", label: "Sold" },
+  { key: "pallet_pl_id", label: "Pallet PL ID" }
 ];
 
 const getRowKey = (row: EnrichedRow) => row.stableKey;
@@ -117,6 +126,13 @@ const getRowTooltip = (row: EnrichedRow) => {
   return `Booking: ${booking}\nContainer: ${container}\nVoyage: ${voyage}`;
 };
 
+const normalizeOptions = (
+  options: Array<string | { value: string; label: string }>
+) =>
+  options.map((option) =>
+    typeof option === "string" ? { value: option, label: option } : option
+  );
+
 function formatKg(value: number) {
   const hasFraction = !Number.isInteger(value);
   return `${value.toLocaleString("en-US", {
@@ -142,28 +158,43 @@ const escapeCsv = (value: string | number) => {
 };
 
 export default function Page() {
-  const [filters, setFilters] = useState<FilterCriteria>(INITIAL_FILTERS);
+  const [filters, setFilters] = useState<UiFilters>(INITIAL_FILTERS);
   const [sort, setSort] = useState<{ column: ColumnKey; direction: "asc" | "desc" } | null>(null);
-  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [sold, setSold] = useState<Record<string, boolean>>({});
   const [viewMode, setViewMode] = useState<"lines" | "summary">("lines");
 
-  const filteredRows = useMemo(
-    () => applyFilters(SOURCE_DATA, filters, FIXED_NOW),
-    [filters]
+  const isRowSold = useCallback(
+    (row: EnrichedRow) => sold[getRowKey(row)] ?? false,
+    [sold]
   );
+
+  const filteredRows = useMemo(() => {
+    const { soldFilter, ...dataFilters } = filters;
+    const rows = applyFilters(
+      SOURCE_DATA,
+      dataFilters as FilterCriteria,
+      FIXED_NOW
+    );
+    return rows.filter((row) => {
+      const rowSold = isRowSold(row);
+      if (soldFilter === "sold") return rowSold;
+      if (soldFilter === "unsold") return !rowSold;
+      return true;
+    });
+  }, [filters, isRowSold]);
 
   const visibleRows = useMemo(() => {
     if (!sort) return filteredRows;
     const sorted = [...filteredRows];
     sorted.sort((a, b) => {
-      const aValue = getComparableValue(a, notes, sort.column);
-      const bValue = getComparableValue(b, notes, sort.column);
+      const aValue = getComparableValue(a, sold, sort.column);
+      const bValue = getComparableValue(b, sold, sort.column);
       if (aValue === bValue) return 0;
       if (aValue > bValue) return sort.direction === "asc" ? 1 : -1;
       return sort.direction === "asc" ? -1 : 1;
     });
     return sorted;
-  }, [filteredRows, sort, notes]);
+  }, [filteredRows, sort, sold]);
 
   const visibleCounts = useMemo(() => {
     const containers = new Set<string>();
@@ -257,9 +288,9 @@ export default function Page() {
     };
   }, [filteredRows]);
 
-  const handleFilterChange = <K extends keyof FilterCriteria>(
+  const handleFilterChange = <K extends keyof UiFilters>(
     key: K,
-    value: FilterCriteria[K]
+    value: UiFilters[K]
   ) => {
     setFilters((prev) => ({
       ...prev,
@@ -277,13 +308,13 @@ export default function Page() {
     });
   };
 
-  const handleNotesChange = (row: EnrichedRow, value: string) => {
+  const handleToggleSold = (row: EnrichedRow) => {
     const key = getRowKey(row);
-    setNotes((prev) => ({ ...prev, [key]: value }));
+    setSold((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   const clearAllFilters = () => {
-    setFilters(INITIAL_FILTERS);
+    setFilters({ ...INITIAL_FILTERS });
     setSort(null);
   };
 
@@ -292,8 +323,7 @@ export default function Page() {
     const header = COLUMNS.map((col) => col.label);
     const rows = visibleRows.map((row) => {
       const status = computeStatus(row, FIXED_NOW);
-      const rowKey = getRowKey(row);
-      const noteValue = notes[rowKey] ?? "";
+      const rowSold = isRowSold(row);
 
       return [
         row.port_destination,
@@ -305,8 +335,8 @@ export default function Page() {
         row.box_weight_kg,
         row.line_weight_kg,
         status,
-        row.pallet_pl_id ?? "",
-        noteValue
+        rowSold ? "true" : "false",
+        row.pallet_pl_id ?? ""
       ].map(escapeCsv);
     });
 
@@ -413,6 +443,14 @@ export default function Page() {
             value={filters.etaTo}
             onChange={(value) => handleFilterChange("etaTo", value)}
           />
+          <SelectControl
+            label="Sold filter"
+            value={filters.soldFilter}
+            onChange={(value) =>
+              handleFilterChange("soldFilter", value as UiFilters["soldFilter"])
+            }
+            options={SOLD_FILTER_OPTIONS}
+          />
         </div>
       </section>
 
@@ -464,8 +502,11 @@ export default function Page() {
                   {visibleRows.map((row) => {
                     const status = computeStatus(row, FIXED_NOW);
                     const rowKey = getRowKey(row);
-                    const noteValue = notes[rowKey] ?? "";
                     const daysToArrival = getDaysToArrival(row);
+                    const rowSold = isRowSold(row);
+                    const soldLabel = `Toggle sold state for ${
+                      row.booking_reference || row.container_code || rowKey
+                    }`;
                     return (
                       <tr
                         key={rowKey}
@@ -512,19 +553,15 @@ export default function Page() {
                             {status}
                           </span>
                         </td>
+                        <td className="px-4 py-3">
+                          <SoldToggle
+                            checked={rowSold}
+                            onChange={() => handleToggleSold(row)}
+                            label={soldLabel}
+                          />
+                        </td>
                         <td className="px-4 py-3 text-sm text-slate-600">
                           {row.pallet_pl_id || "—"}
-                        </td>
-                        <td className="px-4 py-3">
-                          <textarea
-                            rows={2}
-                            value={noteValue}
-                            onChange={(event) =>
-                              handleNotesChange(row, event.target.value)
-                            }
-                            className="w-full rounded-md border border-slate-200 px-2 py-2 text-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-200"
-                            placeholder="Add note"
-                          />
                         </td>
                       </tr>
                     );
@@ -686,25 +723,28 @@ const SelectControl = ({
   label: string;
   value: string;
   onChange: (value: string) => void;
-  options: string[];
+  options: Array<string | { value: string; label: string }>;
   placeholder?: string;
-}) => (
-  <label className="text-sm text-slate-600">
-    <span className="mb-1 block font-medium text-slate-700">{label}</span>
-    <select
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-    >
-      {placeholder && <option value="">{placeholder}</option>}
-      {options.map((option) => (
-        <option key={option} value={option}>
-          {option}
-        </option>
-      ))}
-    </select>
-  </label>
-);
+}) => {
+  const normalized = normalizeOptions(options);
+  return (
+    <label className="text-sm text-slate-600">
+      <span className="mb-1 block font-medium text-slate-700">{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+      >
+        {placeholder && <option value="">{placeholder}</option>}
+        {normalized.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+};
 
 const DateControl = ({
   label,
@@ -726,14 +766,43 @@ const DateControl = ({
   </label>
 );
 
+const SoldToggle = ({
+  checked,
+  onChange,
+  label
+}: {
+  checked: boolean;
+  onChange: () => void;
+  label: string;
+}) => (
+  <button
+    type="button"
+    role="switch"
+    aria-checked={checked}
+    aria-label={label}
+    onClick={onChange}
+    className={`relative inline-flex h-5 w-10 items-center rounded-full transition ${
+      checked ? "bg-emerald-600" : "bg-slate-300"
+    }`}
+  >
+    <span
+      className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+        checked ? "translate-x-5" : "translate-x-1"
+      }`}
+    />
+  </button>
+);
+
 const getComparableValue = (
   row: EnrichedRow,
-  notes: Record<string, string>,
+  soldMap: Record<string, boolean>,
   column: ColumnKey
 ) => {
   switch (column) {
     case "days_to_arrival":
       return getDaysToArrival(row);
+    case "sold":
+      return soldMap[row.stableKey] ? 1 : 0;
     case "pallet_pl_id":
       return (row.pallet_pl_id ?? "").toLowerCase();
     case "box_count":
@@ -742,8 +811,6 @@ const getComparableValue = (
       return row[column] ?? 0;
     case "status":
       return computeStatus(row, FIXED_NOW);
-    case "notes":
-      return (notes[row.stableKey] ?? "").toLowerCase();
     default: {
       const value = row[column as keyof PalletItem];
       if (typeof value === "number") return value;
