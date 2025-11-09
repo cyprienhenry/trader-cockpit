@@ -14,11 +14,8 @@ export type ZoneKey = keyof typeof ZONES;
 export interface FilterCriteria {
   zone: ZoneKey;
   port: string;
-  carrier: string;
-  product: string;
   variety: string;
   caliber: string;
-  packFormat: string;
   etaFrom: string;
   etaTo: string;
   search: string;
@@ -59,12 +56,8 @@ export const applyFilters = <T extends PalletRow>(
   return items.filter((item) => {
     if (zonePorts && !zonePorts.has(item.port_destination)) return false;
     if (criteria.port && item.port_destination !== criteria.port) return false;
-    if (criteria.carrier && item.carrier_name !== criteria.carrier) return false;
-    if (criteria.product && item.product !== criteria.product) return false;
     if (criteria.variety && item.variety !== criteria.variety) return false;
     if (criteria.caliber && item.caliber_raw !== criteria.caliber) return false;
-    if (criteria.packFormat && item.pack_format_raw !== criteria.packFormat)
-      return false;
     if (etaFromDate && item.etaDate < etaFromDate) return false;
     if (etaToDate && item.etaDate > etaToDate) return false;
     if (criteria.nextArrivalsOnly) {

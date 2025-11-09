@@ -53,20 +53,14 @@ const uniqueValues = <K extends StringFieldKey>(key: K) => {
 };
 
 const ALL_PORTS = uniqueValues("port_destination");
-const CARRIERS = uniqueValues("carrier_name");
-const PRODUCTS = uniqueValues("product");
 const VARIETIES = uniqueValues("variety");
 const CALIBERS = uniqueValues("caliber_raw");
-const PACK_FORMATS = uniqueValues("pack_format_raw");
 
 const INITIAL_FILTERS: FilterCriteria = {
   zone: "All",
   port: "",
-  carrier: "",
-  product: "",
   variety: "",
   caliber: "",
-  packFormat: "",
   etaFrom: "",
   etaTo: "",
   search: "",
@@ -328,20 +322,6 @@ export default function Page() {
             placeholder="All ports"
           />
           <SelectControl
-            label="Carrier"
-            value={filters.carrier}
-            onChange={(value) => handleFilterChange("carrier", value)}
-            options={CARRIERS}
-            placeholder="All carriers"
-          />
-          <SelectControl
-            label="Product"
-            value={filters.product}
-            onChange={(value) => handleFilterChange("product", value)}
-            options={PRODUCTS}
-            placeholder="All products"
-          />
-          <SelectControl
             label="Variety"
             value={filters.variety}
             onChange={(value) => handleFilterChange("variety", value)}
@@ -354,13 +334,6 @@ export default function Page() {
             onChange={(value) => handleFilterChange("caliber", value)}
             options={CALIBERS}
             placeholder="All calibers"
-          />
-          <SelectControl
-            label="Pack format"
-            value={filters.packFormat}
-            onChange={(value) => handleFilterChange("packFormat", value)}
-            options={PACK_FORMATS}
-            placeholder="All pack formats"
           />
           <DateControl
             label="ETA from"
