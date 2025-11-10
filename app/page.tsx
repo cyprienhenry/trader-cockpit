@@ -416,7 +416,7 @@ export default function Page() {
               Demo
             </p>
             <h1 className="text-2xl font-semibold text-slate-900">
-              Beta Trader&apos;s Cockpit
+              Beta Best Produce - Trader&apos;s Cockpit
             </h1>
             <p className="text-sm text-slate-500">
               Explore shipments and upcoming arrivals from a single view.
@@ -652,14 +652,6 @@ export default function Page() {
                 <span className="font-semibold text-slate-900">
                   {formatKg(arrivalsSummary.totals.totalKg)}
                 </span>{" "}
-                · Containers:{" "}
-                <span className="font-semibold text-slate-900">
-                  {arrivalsSummary.totals.containers.toLocaleString("en-US")}
-                </span>{" "}
-                · Shipments:{" "}
-                <span className="font-semibold text-slate-900">
-                  {arrivalsSummary.totals.shipments.toLocaleString("en-US")}
-                </span>
               </p>
               <div className="overflow-x-auto">
                 <table className="min-w-full text-left text-sm text-slate-700">
@@ -670,12 +662,6 @@ export default function Page() {
                         Days to arrival
                       </th>
                       <th className="px-4 py-3 font-semibold">Total weight</th>
-                      <th className="px-4 py-3 font-semibold text-right">
-                        Containers
-                      </th>
-                      <th className="px-4 py-3 font-semibold text-right">
-                        Shipments
-                      </th>
                       <th className="px-4 py-3 font-semibold text-right">
                         Lines
                       </th>
@@ -700,12 +686,6 @@ export default function Page() {
                               ({formatTons(group.totalKg)} t)
                             </span>
                           </div>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          {group.containers.toLocaleString("en-US")}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          {group.shipments.toLocaleString("en-US")}
                         </td>
                         <td className="px-4 py-3 text-right">
                           {group.lines.toLocaleString("en-US")}
