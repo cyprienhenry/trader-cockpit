@@ -372,7 +372,9 @@ export default function Page() {
       const nextStatuses = toggleValue(withoutAny, value);
       return {
         ...prev,
-        preAllocatedStatuses: nextStatuses.length ? nextStatuses : ["any"],
+        preAllocatedStatuses: nextStatuses.length
+          ? (nextStatuses as PreAllocationOption[])
+          : ["any"],
       };
     });
   };
