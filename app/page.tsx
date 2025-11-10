@@ -465,31 +465,13 @@ export default function Page() {
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-base font-semibold text-slate-900">Filters</h2>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() =>
-                handleFilterChange(
-                  "nextArrivalsOnly",
-                  !filters.nextArrivalsOnly
-                )
-              }
-              className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-sm font-medium transition ${
-                filters.nextArrivalsOnly
-                  ? "bg-emerald-600 text-white"
-                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-              }`}
-            >
-              Next arrivals ≤7d
-            </button>
-            <button
-              type="button"
-              onClick={clearAllFilters}
-              className="text-sm font-medium text-emerald-600 hover:text-emerald-700"
-            >
-              Clear all
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={clearAllFilters}
+            className="text-sm font-medium text-emerald-600 hover:text-emerald-700"
+          >
+            Clear all
+          </button>
         </div>
         <div className="grid grid-cols-1 gap-6">
           <CheckboxGroup
