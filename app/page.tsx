@@ -55,17 +55,19 @@ const ARRIVAL_OPTIONS: Array<{ value: ArrivalWindow; label: string }> = [
   { value: "lte_2", label: "≤ 2 days" },
   { value: "lte_1", label: "≤ 1 day" },
 ];
-const PREALLOCATED_FILTER_OPTIONS: Array<{
-  value: PreAllocatedFilter;
+const PREALLOCATED_STATUS_OPTIONS: Array<{
+  value: PreAllocationOption;
   label: string;
 }> = [
-  { value: "all", label: "All" },
+  { value: "any", label: "Any" },
   { value: "pre", label: "Only pre-allocated" },
   { value: "not_pre", label: "Only unallocated" },
 ];
 
-type PreAllocatedFilter = "all" | "pre" | "not_pre";
-type UiFilters = FilterCriteria & { preAllocatedFilter: PreAllocatedFilter };
+type PreAllocationOption = "any" | "pre" | "not_pre";
+type UiFilters = FilterCriteria & {
+  preAllocatedStatuses: PreAllocationOption[];
+};
 
 const INITIAL_FILTERS: UiFilters = {
   ports: [],
@@ -74,7 +76,7 @@ const INITIAL_FILTERS: UiFilters = {
   packFormats: [],
   arrivalWindows: [],
   nextArrivalsOnly: false,
-  preAllocatedFilter: "all",
+  preAllocatedStatuses: ["any"],
 };
 
 const toggleValue = (values: string[], value: string) =>
@@ -196,17 +198,23 @@ export default function Page() {
   );
 
   const filteredRows = useMemo(() => {
-    const { preAllocatedFilter, ...dataFilters } = filters;
+    const { preAllocatedStatuses, ...dataFilters } = filters;
     const rows = applyFilters(
       SOURCE_DATA,
       dataFilters as FilterCriteria,
       FIXED_NOW
     );
+    const normalizedStatuses = preAllocatedStatuses.includes("any")
+      ? []
+      : preAllocatedStatuses.filter((value) => value !== "any");
     return rows.filter((row) => {
+      if (!normalizedStatuses.length) return true;
       const rowPreAllocated = isRowPreAllocated(row);
-      if (preAllocatedFilter === "pre") return rowPreAllocated;
-      if (preAllocatedFilter === "not_pre") return !rowPreAllocated;
-      return true;
+      const mustIncludePre = normalizedStatuses.includes("pre");
+      const mustIncludeUn = normalizedStatuses.includes("not_pre");
+      const passesPre = mustIncludePre ? rowPreAllocated : false;
+      const passesUn = mustIncludeUn ? !rowPreAllocated : false;
+      return passesPre || passesUn;
     });
   }, [filters, isRowPreAllocated]);
 
@@ -240,40 +248,24 @@ export default function Page() {
   const portOptions = ALL_PORTS;
 
   const kpis = useMemo(() => {
-    const horizon = new Date(FIXED_NOW);
-    horizon.setUTCDate(horizon.getUTCDate() + 7);
     let totalKg = 0;
     let preAllocatedKg = 0;
-    let unallocatedKg7d = 0;
+    let totalBoxes = 0;
 
     visibleRows.forEach((row) => {
       const weight = row.line_weight_kg ?? 0;
       totalKg += weight;
-      const rowPreAllocated = isRowPreAllocated(row);
-      if (rowPreAllocated) preAllocatedKg += weight;
-      const etaTime = row.etaDate.getTime();
-      if (Number.isNaN(etaTime)) {
-        return;
-      }
-      if (
-        !rowPreAllocated &&
-        etaTime > FIXED_NOW.getTime() &&
-        etaTime <= horizon.getTime()
-      ) {
-        unallocatedKg7d += weight;
-      }
+      totalBoxes += row.box_count ?? 0;
+      if (isRowPreAllocated(row)) preAllocatedKg += weight;
     });
 
     const pctPreAllocated = totalKg > 0 ? (preAllocatedKg / totalKg) * 100 : 0;
-    const pctUnallocated7d =
-      totalKg > 0 ? (unallocatedKg7d / totalKg) * 100 : 0;
 
     return {
       totalKg,
-      preAllocatedKg,
-      unallocatedKg7d,
       pctPreAllocated,
-      pctUnallocated7d,
+      pallets: visibleRows.length,
+      totalBoxes,
     };
   }, [visibleRows, isRowPreAllocated]);
 
@@ -368,6 +360,22 @@ export default function Page() {
       ...prev,
       [key]: toggleValue(prev[key], value),
     }));
+  };
+
+  const handlePreAllocatedToggle = (value: PreAllocationOption) => {
+    setFilters((prev) => {
+      if (value === "any") {
+        return { ...prev, preAllocatedStatuses: ["any"] };
+      }
+      const withoutAny = prev.preAllocatedStatuses.filter(
+        (status) => status !== "any"
+      );
+      const nextStatuses = toggleValue(withoutAny, value);
+      return {
+        ...prev,
+        preAllocatedStatuses: nextStatuses.length ? nextStatuses : ["any"],
+      };
+    });
   };
 
   const handleSort = (column: ColumnKey) => {
@@ -515,25 +523,24 @@ export default function Page() {
               }
             />
           </div>
-          <CheckboxGroup
-            label="Days before arrival"
-            options={ARRIVAL_OPTIONS}
-            selected={filters.arrivalWindows}
-            onToggle={(value) =>
-              handleArrayFilterToggle("arrivalWindows", value)
-            }
-          />
-          <SelectControl
-            label="Pre-allocated filter"
-            value={filters.preAllocatedFilter}
-            onChange={(value) =>
-              handleFilterChange(
-                "preAllocatedFilter",
-                value as UiFilters["preAllocatedFilter"]
-              )
-            }
-            options={PREALLOCATED_FILTER_OPTIONS}
-          />
+          <div className="grid gap-4 md:grid-cols-2">
+            <CheckboxGroup
+              label="Days before arrival"
+              options={ARRIVAL_OPTIONS}
+              selected={filters.arrivalWindows}
+              onToggle={(value) =>
+                handleArrayFilterToggle("arrivalWindows", value)
+              }
+            />
+            <CheckboxGroup
+              label="Pre-allocated status"
+              options={PREALLOCATED_STATUS_OPTIONS}
+              selected={filters.preAllocatedStatuses}
+              onToggle={(value) =>
+                handlePreAllocatedToggle(value as PreAllocationOption)
+              }
+            />
+          </div>
         </div>
       </section>
 
@@ -760,58 +767,6 @@ export default function Page() {
   );
 }
 
-const SortIndicator = ({
-  column,
-  sort,
-}: {
-  column: ColumnKey;
-  sort: { column: ColumnKey; direction: "asc" | "desc" } | null;
-}) => {
-  if (!sort || sort.column !== column) {
-    return null;
-  }
-  return (
-    <span aria-hidden="true" className="text-slate-500">
-      {sort.direction === "asc" ? "^" : "v"}
-    </span>
-  );
-};
-
-const SelectControl = ({
-  label,
-  value,
-  onChange,
-  options,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: Array<string | { value: string; label: string }>;
-  placeholder?: string;
-}) => {
-  const normalized = normalizeOptions(options);
-  return (
-    <label className="text-sm text-slate-600">
-      <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-900">
-        {label}
-      </span>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-      >
-        {placeholder && <option value="">{placeholder}</option>}
-        {normalized.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-};
-
 const CheckboxGroup = ({
   label,
   options,
@@ -825,8 +780,8 @@ const CheckboxGroup = ({
 }) => {
   const normalized = normalizeOptions(options);
   return (
-    <fieldset className="text-sm text-slate-600">
-      <legend className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-900">
+    <fieldset className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-4 text-sm text-slate-600 shadow-inner">
+      <legend className="mb-3 inline-flex items-center gap-2 rounded-full bg-emerald-600 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white shadow">
         {label}
       </legend>
       <div className="flex flex-wrap gap-2">
@@ -885,13 +840,31 @@ const PreallocatedToggle = ({
   </button>
 );
 
+const SortIndicator = ({
+  column,
+  sort,
+}: {
+  column: ColumnKey;
+  sort: { column: ColumnKey; direction: "asc" | "desc" } | null;
+}) => {
+  if (!sort || sort.column !== column) {
+    return null;
+  }
+  return (
+    <span aria-hidden="true" className="text-slate-500">
+      {sort.direction === "asc" ? "^" : "v"}
+    </span>
+  );
+};
+
 const KPIBar = ({
   totals,
 }: {
   totals: {
     totalKg: number;
     pctPreAllocated: number;
-    pctUnallocated7d: number;
+    pallets: number;
+    totalBoxes: number;
   };
 }) => {
   const cards = [
@@ -901,20 +874,24 @@ const KPIBar = ({
       sub: `(${formatTons(totals.totalKg)} t)`,
     },
     {
+      label: "Pallets",
+      value: totals.pallets.toLocaleString("en-US"),
+      sub: "Visible rows",
+    },
+    {
+      label: "Boxes",
+      value: totals.totalBoxes.toLocaleString("en-US"),
+      sub: "Total visible box count",
+    },
+    {
       label: "% pre-allocated",
       value: formatPercent(totals.pctPreAllocated),
       sub: "Share of visible weight",
     },
-    {
-      label: "% unallocated ≤7d",
-      value: formatPercent(totals.pctUnallocated7d),
-      sub: "Unallocated arriving within 7 days",
-      title: "Unallocated share landing within 7 days",
-    },
   ];
 
   return (
-    <div className="grid gap-4 sm:grid-cols-3">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {cards.map((card) => (
         <div
           key={card.label}
