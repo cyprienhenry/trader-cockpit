@@ -3,9 +3,10 @@ import { PalletRow, Status } from "@/types";
 export const FIXED_NOW_ISO = "2025-11-09T00:00:00Z";
 
 export interface FilterCriteria {
-  port: string;
-  variety: string;
-  caliber: string;
+  ports: string[];
+  varieties: string[];
+  calibers: string[];
+  packFormats: string[];
   nextArrivalsOnly: boolean;
 }
 
@@ -18,9 +19,26 @@ export const applyFilters = <T extends PalletRow>(
   windowEnd.setUTCDate(windowEnd.getUTCDate() + 7);
 
   return items.filter((item) => {
-    if (criteria.port && item.port_destination !== criteria.port) return false;
-    if (criteria.variety && item.variety !== criteria.variety) return false;
-    if (criteria.caliber && item.caliber_raw !== criteria.caliber) return false;
+    if (
+      criteria.ports.length &&
+      !criteria.ports.includes(item.port_destination)
+    )
+      return false;
+    if (
+      criteria.packFormats.length &&
+      !criteria.packFormats.includes(item.pack_format_raw)
+    )
+      return false;
+    if (
+      criteria.varieties.length &&
+      !criteria.varieties.includes(item.variety)
+    )
+      return false;
+    if (
+      criteria.calibers.length &&
+      !criteria.calibers.includes(item.caliber_raw)
+    )
+      return false;
     if (criteria.nextArrivalsOnly) {
       if (!(item.etaDate > now && item.etaDate <= windowEnd)) return false;
     }

@@ -47,6 +47,7 @@ const uniqueValues = <K extends StringFieldKey>(key: K) => {
 const ALL_PORTS = uniqueValues("port_destination");
 const VARIETIES = uniqueValues("variety");
 const CALIBERS = uniqueValues("caliber_raw");
+const PACK_FORMATS = uniqueValues("pack_format_raw");
 const PREALLOCATED_FILTER_OPTIONS: Array<{
   value: PreAllocatedFilter;
   label: string;
@@ -60,12 +61,18 @@ type PreAllocatedFilter = "all" | "pre" | "not_pre";
 type UiFilters = FilterCriteria & { preAllocatedFilter: PreAllocatedFilter };
 
 const INITIAL_FILTERS: UiFilters = {
-  port: "",
-  variety: "",
-  caliber: "",
+  ports: [],
+  varieties: [],
+  calibers: [],
+  packFormats: [],
   nextArrivalsOnly: false,
   preAllocatedFilter: "all",
 };
+
+const toggleValue = (values: string[], value: string) =>
+  values.includes(value)
+    ? values.filter((item) => item !== value)
+    : [...values, value];
 
 type ColumnKey =
   | "port_destination"
@@ -79,6 +86,13 @@ type ColumnKey =
   | "status"
   | "pre_allocated"
   | "pallet_pl_id";
+
+type ArrayFilterKey = "ports" | "varieties" | "calibers";
+type ArrayFilterKey =
+  | "ports"
+  | "varieties"
+  | "calibers"
+  | "packFormats";
 
 interface ColumnDefinition {
   key: ColumnKey;
@@ -341,6 +355,13 @@ export default function Page() {
     }));
   };
 
+  const handleArrayFilterToggle = (key: ArrayFilterKey, value: string) => {
+    setFilters((prev) => ({
+      ...prev,
+      [key]: toggleValue(prev[key], value),
+    }));
+  };
+
   const handleSort = (column: ColumnKey) => {
     setSort((current) => {
       if (current?.column === column) {
@@ -457,28 +478,33 @@ export default function Page() {
             </button>
           </div>
         </div>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <SelectControl
+        <div className="grid grid-cols-1 gap-6">
+          <CheckboxGroup
             label="Port"
-            value={filters.port}
-            onChange={(value) => handleFilterChange("port", value)}
             options={portOptions}
-            placeholder="All ports"
+            selected={filters.ports}
+            onToggle={(value) => handleArrayFilterToggle("ports", value)}
           />
-          <SelectControl
-            label="Variety"
-            value={filters.variety}
-            onChange={(value) => handleFilterChange("variety", value)}
-            options={VARIETIES}
-            placeholder="All varieties"
-          />
-          <SelectControl
-            label="Caliber"
-            value={filters.caliber}
-            onChange={(value) => handleFilterChange("caliber", value)}
-            options={CALIBERS}
-            placeholder="All calibers"
-          />
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <CheckboxGroup
+              label="Variety"
+              options={VARIETIES}
+              selected={filters.varieties}
+              onToggle={(value) => handleArrayFilterToggle("varieties", value)}
+            />
+            <CheckboxGroup
+              label="Caliber"
+              options={CALIBERS}
+              selected={filters.calibers}
+              onToggle={(value) => handleArrayFilterToggle("calibers", value)}
+            />
+            <CheckboxGroup
+              label="Pack format"
+              options={PACK_FORMATS}
+              selected={filters.packFormats}
+              onToggle={(value) => handleArrayFilterToggle("packFormats", value)}
+            />
+          </div>
           <SelectControl
             label="Pre-allocated filter"
             value={filters.preAllocatedFilter}
@@ -765,6 +791,48 @@ const SelectControl = ({
     </label>
   );
 };
+
+const CheckboxGroup = ({
+  label,
+  options,
+  selected,
+  onToggle,
+}: {
+  label: string;
+  options: string[];
+  selected: string[];
+  onToggle: (value: string) => void;
+}) => (
+  <fieldset className="text-sm text-slate-600">
+    <legend className="mb-2 block font-medium text-slate-700">{label}</legend>
+    <div className="flex flex-wrap gap-2">
+      {options.map((option) => {
+        const checked = selected.includes(option);
+        return (
+          <label
+            key={option}
+            className={`inline-flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1 ${
+              checked
+                ? "border-emerald-600 bg-emerald-50 text-emerald-700"
+                : "border-slate-200 bg-white text-slate-700"
+            }`}
+          >
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+              checked={checked}
+              onChange={() => onToggle(option)}
+            />
+            <span>{option}</span>
+          </label>
+        );
+      })}
+      {!options.length && (
+        <span className="text-xs text-slate-400">No options available.</span>
+      )}
+    </div>
+  </fieldset>
+);
 
 const PreallocatedToggle = ({
   checked,
