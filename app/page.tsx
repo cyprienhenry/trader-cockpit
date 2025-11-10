@@ -897,7 +897,6 @@ const KPIBar = ({
         <div
           key={card.label}
           className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
-          title={card.title}
         >
           <p className="text-xs uppercase tracking-wide text-slate-500">
             {card.label}
