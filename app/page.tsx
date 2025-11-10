@@ -47,14 +47,17 @@ const uniqueValues = <K extends StringFieldKey>(key: K) => {
 const ALL_PORTS = uniqueValues("port_destination");
 const VARIETIES = uniqueValues("variety");
 const CALIBERS = uniqueValues("caliber_raw");
-const SOLD_FILTER_OPTIONS: Array<{ value: SoldFilter; label: string }> = [
+const PREALLOCATED_FILTER_OPTIONS: Array<{
+  value: PreAllocatedFilter;
+  label: string;
+}> = [
   { value: "all", label: "All" },
-  { value: "sold", label: "Only sold" },
-  { value: "unsold", label: "Only unsold" },
+  { value: "pre", label: "Only pre-allocated" },
+  { value: "not_pre", label: "Only unallocated" },
 ];
 
-type SoldFilter = "all" | "sold" | "unsold";
-type UiFilters = FilterCriteria & { soldFilter: SoldFilter };
+type PreAllocatedFilter = "all" | "pre" | "not_pre";
+type UiFilters = FilterCriteria & { preAllocatedFilter: PreAllocatedFilter };
 
 const INITIAL_FILTERS: UiFilters = {
   port: "",
@@ -63,7 +66,7 @@ const INITIAL_FILTERS: UiFilters = {
   etaFrom: "",
   etaTo: "",
   nextArrivalsOnly: false,
-  soldFilter: "all",
+  preAllocatedFilter: "all",
 };
 
 type ColumnKey =
@@ -76,7 +79,7 @@ type ColumnKey =
   | "box_weight_kg"
   | "line_weight_kg"
   | "status"
-  | "sold"
+  | "pre_allocated"
   | "pallet_pl_id";
 
 interface ColumnDefinition {
@@ -95,7 +98,7 @@ const COLUMNS: ColumnDefinition[] = [
   { key: "box_weight_kg", label: "Box weight (kg)", numeric: true },
   { key: "line_weight_kg", label: "Line weight (kg)", numeric: true },
   { key: "status", label: "Status" },
-  { key: "sold", label: "Sold" },
+  { key: "pre_allocated", label: "Pre-allocated" },
   { key: "pallet_pl_id", label: "Pallet PL ID" },
 ];
 
@@ -163,41 +166,41 @@ export default function Page() {
     column: ColumnKey;
     direction: "asc" | "desc";
   } | null>(null);
-  const [sold, setSold] = useState<Record<string, boolean>>({});
+  const [preAllocated, setPreAllocated] = useState<Record<string, boolean>>({});
   const [viewMode, setViewMode] = useState<"lines" | "summary">("lines");
 
-  const isRowSold = useCallback(
-    (row: EnrichedRow) => sold[getRowKey(row)] ?? false,
-    [sold]
+  const isRowPreAllocated = useCallback(
+    (row: EnrichedRow) => preAllocated[getRowKey(row)] ?? false,
+    [preAllocated]
   );
 
   const filteredRows = useMemo(() => {
-    const { soldFilter, ...dataFilters } = filters;
+    const { preAllocatedFilter, ...dataFilters } = filters;
     const rows = applyFilters(
       SOURCE_DATA,
       dataFilters as FilterCriteria,
       FIXED_NOW
     );
     return rows.filter((row) => {
-      const rowSold = isRowSold(row);
-      if (soldFilter === "sold") return rowSold;
-      if (soldFilter === "unsold") return !rowSold;
+      const rowPreAllocated = isRowPreAllocated(row);
+      if (preAllocatedFilter === "pre") return rowPreAllocated;
+      if (preAllocatedFilter === "not_pre") return !rowPreAllocated;
       return true;
     });
-  }, [filters, isRowSold]);
+  }, [filters, isRowPreAllocated]);
 
   const visibleRows = useMemo(() => {
     if (!sort) return filteredRows;
     const sorted = [...filteredRows];
     sorted.sort((a, b) => {
-      const aValue = getComparableValue(a, sold, sort.column);
-      const bValue = getComparableValue(b, sold, sort.column);
+      const aValue = getComparableValue(a, preAllocated, sort.column);
+      const bValue = getComparableValue(b, preAllocated, sort.column);
       if (aValue === bValue) return 0;
       if (aValue > bValue) return sort.direction === "asc" ? 1 : -1;
       return sort.direction === "asc" ? -1 : 1;
     });
     return sorted;
-  }, [filteredRows, sort, sold]);
+  }, [filteredRows, sort, preAllocated]);
 
   const visibleCounts = useMemo(() => {
     const containers = new Set<string>();
@@ -219,38 +222,40 @@ export default function Page() {
     const horizon = new Date(FIXED_NOW);
     horizon.setUTCDate(horizon.getUTCDate() + 7);
     let totalKg = 0;
-    let soldKg = 0;
-    let unsoldKg7d = 0;
+    let preAllocatedKg = 0;
+    let unallocatedKg7d = 0;
 
     visibleRows.forEach((row) => {
       const weight = row.line_weight_kg ?? 0;
       totalKg += weight;
-      const rowSold = isRowSold(row);
-      if (rowSold) soldKg += weight;
+      const rowPreAllocated = isRowPreAllocated(row);
+      if (rowPreAllocated) preAllocatedKg += weight;
       const etaTime = row.etaDate.getTime();
       if (Number.isNaN(etaTime)) {
         return;
       }
       if (
-        !rowSold &&
+        !rowPreAllocated &&
         etaTime > FIXED_NOW.getTime() &&
         etaTime <= horizon.getTime()
       ) {
-        unsoldKg7d += weight;
+        unallocatedKg7d += weight;
       }
     });
 
-    const pctSold = totalKg > 0 ? (soldKg / totalKg) * 100 : 0;
-    const pctUnsold7d = totalKg > 0 ? (unsoldKg7d / totalKg) * 100 : 0;
+    const pctPreAllocated =
+      totalKg > 0 ? (preAllocatedKg / totalKg) * 100 : 0;
+    const pctUnallocated7d =
+      totalKg > 0 ? (unallocatedKg7d / totalKg) * 100 : 0;
 
     return {
       totalKg,
-      soldKg,
-      unsoldKg7d,
-      pctSold,
-      pctUnsold7d,
+      preAllocatedKg,
+      unallocatedKg7d,
+      pctPreAllocated,
+      pctUnallocated7d,
     };
-  }, [visibleRows, isRowSold]);
+  }, [visibleRows, isRowPreAllocated]);
 
   const arrivalsSummary = useMemo(() => {
     const groupMap = new Map<
@@ -348,9 +353,9 @@ export default function Page() {
     });
   };
 
-  const handleToggleSold = (row: EnrichedRow) => {
+  const handleTogglePreAllocated = (row: EnrichedRow) => {
     const key = getRowKey(row);
-    setSold((prev) => ({ ...prev, [key]: !prev[key] }));
+    setPreAllocated((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   const clearAllFilters = () => {
@@ -363,7 +368,7 @@ export default function Page() {
     const header = COLUMNS.map((col) => col.label);
     const rows = visibleRows.map((row) => {
       const status = computeStatus(row, FIXED_NOW);
-      const rowSold = isRowSold(row);
+      const rowPreAllocated = isRowPreAllocated(row);
 
       return [
         row.port_destination,
@@ -375,7 +380,7 @@ export default function Page() {
         row.box_weight_kg,
         row.line_weight_kg,
         status,
-        rowSold ? "true" : "false",
+        rowPreAllocated ? "true" : "false",
         row.pallet_pl_id ?? "",
       ].map(escapeCsv);
     });
@@ -487,12 +492,15 @@ export default function Page() {
             onChange={(value) => handleFilterChange("etaTo", value)}
           />
           <SelectControl
-            label="Sold filter"
-            value={filters.soldFilter}
+            label="Pre-allocated filter"
+            value={filters.preAllocatedFilter}
             onChange={(value) =>
-              handleFilterChange("soldFilter", value as UiFilters["soldFilter"])
+              handleFilterChange(
+                "preAllocatedFilter",
+                value as UiFilters["preAllocatedFilter"]
+              )
             }
-            options={SOLD_FILTER_OPTIONS}
+            options={PREALLOCATED_FILTER_OPTIONS}
           />
         </div>
       </section>
@@ -547,8 +555,8 @@ export default function Page() {
                     const status = computeStatus(row, FIXED_NOW);
                     const rowKey = getRowKey(row);
                     const daysToArrival = getDaysToArrival(row);
-                    const rowSold = isRowSold(row);
-                    const soldLabel = `Toggle sold state for ${
+                    const rowPreAllocated = isRowPreAllocated(row);
+                    const preAllocatedLabel = `Toggle pre-allocation for ${
                       row.booking_reference || row.container_code || rowKey
                     }`;
                     return (
@@ -598,10 +606,10 @@ export default function Page() {
                           </span>
                         </td>
                         <td className="px-4 py-3">
-                          <SoldToggle
-                            checked={rowSold}
-                            onChange={() => handleToggleSold(row)}
-                            label={soldLabel}
+                          <PreallocatedToggle
+                            checked={rowPreAllocated}
+                            onChange={() => handleTogglePreAllocated(row)}
+                            label={preAllocatedLabel}
                           />
                         </td>
                         <td className="px-4 py-3 text-sm text-slate-600">
@@ -790,7 +798,7 @@ const DateControl = ({
   </label>
 );
 
-const SoldToggle = ({
+const PreallocatedToggle = ({
   checked,
   onChange,
   label,
@@ -822,8 +830,8 @@ const KPIBar = ({
 }: {
   totals: {
     totalKg: number;
-    pctSold: number;
-    pctUnsold7d: number;
+    pctPreAllocated: number;
+    pctUnallocated7d: number;
   };
 }) => {
   const cards = [
@@ -833,15 +841,15 @@ const KPIBar = ({
       sub: `(${formatTons(totals.totalKg)} t)`,
     },
     {
-      label: "% sold",
-      value: formatPercent(totals.pctSold),
+      label: "% pre-allocated",
+      value: formatPercent(totals.pctPreAllocated),
       sub: "Share of visible weight",
     },
     {
-      label: "% unsold ≤7d",
-      value: formatPercent(totals.pctUnsold7d),
-      sub: "Unsold arriving within 7 days",
-      title: "Unsold share landing within 7 days",
+      label: "% unallocated ≤7d",
+      value: formatPercent(totals.pctUnallocated7d),
+      sub: "Unallocated arriving within 7 days",
+      title: "Unallocated share landing within 7 days",
     },
   ];
 
@@ -866,14 +874,14 @@ const KPIBar = ({
 
 const getComparableValue = (
   row: EnrichedRow,
-  soldMap: Record<string, boolean>,
+  preAllocatedMap: Record<string, boolean>,
   column: ColumnKey
 ) => {
   switch (column) {
     case "days_to_arrival":
       return getDaysToArrival(row);
-    case "sold":
-      return soldMap[row.stableKey] ? 1 : 0;
+    case "pre_allocated":
+      return preAllocatedMap[row.stableKey] ? 1 : 0;
     case "pallet_pl_id":
       return (row.pallet_pl_id ?? "").toLowerCase();
     case "box_count":
