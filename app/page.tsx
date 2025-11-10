@@ -93,7 +93,6 @@ type ColumnKey =
   | "box_count"
   | "box_weight_kg"
   | "line_weight_kg"
-  | "status"
   | "pre_allocated"
   | "pallet_pl_id";
 
@@ -119,7 +118,6 @@ const COLUMNS: ColumnDefinition[] = [
   { key: "box_count", label: "Boxes", numeric: true },
   { key: "box_weight_kg", label: "Box weight (kg)", numeric: true },
   { key: "line_weight_kg", label: "Line weight (kg)", numeric: true },
-  { key: "status", label: "Status" },
   { key: "pre_allocated", label: "Pre-allocated" },
   { key: "pallet_pl_id", label: "Pallet PL ID" },
 ];
@@ -403,7 +401,6 @@ export default function Page() {
     if (!visibleRows.length) return;
     const header = COLUMNS.map((col) => col.label);
     const rows = visibleRows.map((row) => {
-      const status = computeStatus(row, FIXED_NOW);
       const rowPreAllocated = isRowPreAllocated(row);
 
       return [
@@ -415,7 +412,6 @@ export default function Page() {
         row.box_count,
         row.box_weight_kg,
         row.line_weight_kg,
-        status,
         rowPreAllocated ? "true" : "false",
         row.pallet_pl_id ?? "",
       ].map(escapeCsv);
@@ -592,7 +588,6 @@ export default function Page() {
                 </thead>
                 <tbody>
                   {visibleRows.map((row) => {
-                    const status = computeStatus(row, FIXED_NOW);
                     const rowKey = getRowKey(row);
                     const daysToArrival = getDaysToArrival(row);
                     const rowPreAllocated = isRowPreAllocated(row);
@@ -639,11 +634,6 @@ export default function Page() {
                         </td>
                         <td className="px-4 py-3 text-right">
                           {formatWeight(row.line_weight_kg)}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="rounded-full border border-slate-200 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-slate-700">
-                            {status}
-                          </span>
                         </td>
                         <td className="px-4 py-3">
                           <PreallocatedToggle
@@ -925,8 +915,6 @@ const getComparableValue = (
     case "box_weight_kg":
     case "line_weight_kg":
       return row[column] ?? 0;
-    case "status":
-      return computeStatus(row, FIXED_NOW);
     default: {
       const value = row[column as keyof PalletItem];
       if (typeof value === "number") return value;
