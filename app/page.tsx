@@ -10,11 +10,12 @@ import {
   computeStatus,
   hasEtaPassed,
   isEtaWithinSevenDays,
+  type ArrivalWindow,
 } from "@/lib/filters";
 import type { PalletDataset, PalletItem, PalletRow } from "@/types";
 
 // const FIXED_NOW = new Date(FIXED_NOW_ISO);
-const FIXED_NOW = new Date("2025-11-12T00:00:00Z");
+const FIXED_NOW = new Date("2025-11-07T00:00:00Z");
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 type EnrichedRow = PalletRow & { stableKey: string };
@@ -48,6 +49,12 @@ const ALL_PORTS = uniqueValues("port_destination");
 const VARIETIES = uniqueValues("variety");
 const CALIBERS = uniqueValues("caliber_raw");
 const PACK_FORMATS = uniqueValues("pack_format_raw");
+const ARRIVAL_OPTIONS: Array<{ value: ArrivalWindow; label: string }> = [
+  { value: "gte_7", label: "≥ 7 days" },
+  { value: "lte_7", label: "≤ 7 days" },
+  { value: "lte_2", label: "≤ 2 days" },
+  { value: "lte_1", label: "≤ 1 day" },
+];
 const PREALLOCATED_FILTER_OPTIONS: Array<{
   value: PreAllocatedFilter;
   label: string;
@@ -65,6 +72,7 @@ const INITIAL_FILTERS: UiFilters = {
   varieties: [],
   calibers: [],
   packFormats: [],
+  arrivalWindows: [],
   nextArrivalsOnly: false,
   preAllocatedFilter: "all",
 };
@@ -92,7 +100,8 @@ type ArrayFilterKey =
   | "ports"
   | "varieties"
   | "calibers"
-  | "packFormats";
+  | "packFormats"
+  | "arrivalWindows";
 
 interface ColumnDefinition {
   key: ColumnKey;
@@ -255,8 +264,7 @@ export default function Page() {
       }
     });
 
-    const pctPreAllocated =
-      totalKg > 0 ? (preAllocatedKg / totalKg) * 100 : 0;
+    const pctPreAllocated = totalKg > 0 ? (preAllocatedKg / totalKg) * 100 : 0;
     const pctUnallocated7d =
       totalKg > 0 ? (unallocatedKg7d / totalKg) * 100 : 0;
 
@@ -502,9 +510,19 @@ export default function Page() {
               label="Pack format"
               options={PACK_FORMATS}
               selected={filters.packFormats}
-              onToggle={(value) => handleArrayFilterToggle("packFormats", value)}
+              onToggle={(value) =>
+                handleArrayFilterToggle("packFormats", value)
+              }
             />
           </div>
+          <CheckboxGroup
+            label="Days before arrival"
+            options={ARRIVAL_OPTIONS}
+            selected={filters.arrivalWindows}
+            onToggle={(value) =>
+              handleArrayFilterToggle("arrivalWindows", value)
+            }
+          />
           <SelectControl
             label="Pre-allocated filter"
             value={filters.preAllocatedFilter}
@@ -775,7 +793,9 @@ const SelectControl = ({
   const normalized = normalizeOptions(options);
   return (
     <label className="text-sm text-slate-600">
-      <span className="mb-1 block font-medium text-slate-700">{label}</span>
+      <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-900">
+        {label}
+      </span>
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -799,41 +819,45 @@ const CheckboxGroup = ({
   onToggle,
 }: {
   label: string;
-  options: string[];
+  options: Array<string | { value: string; label: string }>;
   selected: string[];
   onToggle: (value: string) => void;
-}) => (
-  <fieldset className="text-sm text-slate-600">
-    <legend className="mb-2 block font-medium text-slate-700">{label}</legend>
-    <div className="flex flex-wrap gap-2">
-      {options.map((option) => {
-        const checked = selected.includes(option);
-        return (
-          <label
-            key={option}
-            className={`inline-flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1 ${
-              checked
-                ? "border-emerald-600 bg-emerald-50 text-emerald-700"
-                : "border-slate-200 bg-white text-slate-700"
-            }`}
-          >
-            <input
-              type="checkbox"
-              className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-              checked={checked}
-              onChange={() => onToggle(option)}
-            />
-            <span>{option}</span>
-          </label>
-        );
-      })}
-      {!options.length && (
-        <span className="text-xs text-slate-400">No options available.</span>
-      )}
-    </div>
-  </fieldset>
-);
-
+}) => {
+  const normalized = normalizeOptions(options);
+  return (
+    <fieldset className="text-sm text-slate-600">
+      <legend className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-900">
+        {label}
+      </legend>
+      <div className="flex flex-wrap gap-2">
+        {normalized.map((option) => {
+          const checked = selected.includes(option.value);
+          return (
+            <label
+              key={option.value}
+              className={`inline-flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1 ${
+                checked
+                  ? "border-emerald-600 bg-emerald-50 text-emerald-700"
+                  : "border-slate-200 bg-white text-slate-700"
+              }`}
+            >
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                checked={checked}
+                onChange={() => onToggle(option.value)}
+              />
+              <span className="text-sm font-medium">{option.label}</span>
+            </label>
+          );
+        })}
+        {!normalized.length && (
+          <span className="text-xs text-slate-400">No options available.</span>
+        )}
+      </div>
+    </fieldset>
+  );
+};
 const PreallocatedToggle = ({
   checked,
   onChange,
