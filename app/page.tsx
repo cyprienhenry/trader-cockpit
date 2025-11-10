@@ -63,8 +63,6 @@ const INITIAL_FILTERS: UiFilters = {
   port: "",
   variety: "",
   caliber: "",
-  etaFrom: "",
-  etaTo: "",
   nextArrivalsOnly: false,
   preAllocatedFilter: "all",
 };
@@ -481,16 +479,6 @@ export default function Page() {
             options={CALIBERS}
             placeholder="All calibers"
           />
-          <DateControl
-            label="ETA from"
-            value={filters.etaFrom}
-            onChange={(value) => handleFilterChange("etaFrom", value)}
-          />
-          <DateControl
-            label="ETA to"
-            value={filters.etaTo}
-            onChange={(value) => handleFilterChange("etaTo", value)}
-          />
           <SelectControl
             label="Pre-allocated filter"
             value={filters.preAllocatedFilter}
@@ -777,26 +765,6 @@ const SelectControl = ({
     </label>
   );
 };
-
-const DateControl = ({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) => (
-  <label className="text-sm text-slate-600">
-    <span className="mb-1 block font-medium text-slate-700">{label}</span>
-    <input
-      type="date"
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-    />
-  </label>
-);
 
 const PreallocatedToggle = ({
   checked,
