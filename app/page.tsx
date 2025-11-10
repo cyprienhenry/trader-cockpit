@@ -97,7 +97,6 @@ type ColumnKey =
   | "pre_allocated"
   | "pallet_pl_id";
 
-type ArrayFilterKey = "ports" | "varieties" | "calibers";
 type ArrayFilterKey =
   | "ports"
   | "varieties"
